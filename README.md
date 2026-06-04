@@ -266,96 +266,110 @@ npm run dev
 
 ---
 
-## 九、团队分工
+## 九、团队分工与模块职责说明
 
-### 成员 A：表单引擎（前端核心）
+本项目采用“纵向按业务域切分 + 横向公共能力下沉”的协作模式，确保各成员负载均衡、模块边界清晰。以下为最终确定的团队分工及详细职责说明。
 
-**负责范围**：表单设计器 + 表单渲染器 + 属性面板 + 预览 + API 层 + 类型系统
+### 1. 分工总览
 
-| 模块 | 文件 | 功能 |
-|------|------|------|
-| 表单设计器 | `FormDesigner.vue` | 左（组件库）/中（画布拖拽排序）/右（属性面板）三栏布局，工具栏（保存/清空/预览/版本历史） |
-| 组件库面板 | `ComponentPanel.vue` | 8 种可拖拽字段类型（HTML5 DnD） |
-| 画布 | `DesignerCanvas.vue` + `CanvasField.vue` | 拖入放置区 + vuedraggable 排序 + 字段预览卡片 |
-| 属性面板 | `PropertyPanel.vue` | 基础信息编辑 + **按字段类型的专属校验规则**（文本/数字/日期/选择各有不同） |
-| 表单渲染器 | `FormRenderer.vue` | 读取 JSON → 动态渲染 8 种字段 + 校验规则转换 + 多选支持 + 只读模式 |
-| 全屏预览页 | `SchemaPreviewPage.vue` | 可视化渲染 + 原始 JSON 双栏，支持三种 Schema 类型各异的预览 |
-| 版本历史弹窗 | `VersionDialog.vue` | 版本列表 + 预览入口 + 考勤规则"设为当前" |
-| API 客户端 | `api/index.ts` | 统一 fetch 封装 + 全量后端接口定义（6 组 API） |
-| 类型系统 | `types/form.ts` | FormSchema / FormField / ValidationRule（含各类型专属规则字段） |
-| 状态管理 | `composables/useFormDesigner.ts` | 字段增删改查、属性编辑、Schema 导出、拖入位置计算 |
+| 成员 | 角色定位 | 核心负责范围 |
+| :--- | :--- | :--- |
+| **成员 A** | 表单引擎 + 请假业务（全栈） | 表单设计器/渲染器全栈、请假业务全链路、表单版本管理 |
+| **成员 B** | 流程引擎核心（技术攻坚） | 流程设计器前端、审批责任链引擎、条件评估器、流程版本管理、审批后端API |
+| **成员 C** | 考勤引擎 + 审批工作台前端 | 考勤规则/判定引擎全栈、员工打卡页、考勤版本管理、审批工作台前端UI |
+| **成员 D** | 平台基础设施 + 数据层 | 前后端框架搭建、缓存工具类、数据库设计、数据初始化、统一响应、项目文档 |
 
-**还需要关注**：前端生成的 JSON 必须与后端实体格式一致；Element Plus 校验规则命名差异（minLength→min）；多选 select 默认值需为 `[]`。
+### 2. 详细模块分工
 
----
+#### 成员 A：表单引擎 + 请假业务
 
-### 成员 B：流程引擎（前后端核心）
+> **定位**：“表单+请假”业务闭环负责人，兼顾表单低代码核心与请假业务全栈开发。
 
-**负责范围**：流程设计器 + 责任链引擎 + 审批流转 + 请假业务全链路
+| 模块 | 文件 | 功能说明 |
+| :--- | :--- | :--- |
+| 表单设计器(前端) | `FormDesigner.vue` / `ComponentPanel.vue` / `DesignerCanvas.vue` / `CanvasField.vue` / `PropertyPanel.vue` | 三栏布局、拖拽排序、属性编辑、专属校验规则 |
+| 表单渲染+预览 | `FormRenderer.vue` / `SchemaPreviewPage.vue` / `VersionDialog.vue` | 动态渲染、JSON双栏预览、版本回滚 |
+| 表单后端 | `FormSchemaController` / `FormSchemaServiceImpl` / `FormSchemaMapper` | 表单CRUD、表单版本管理(saveWithVersion/getVersions) |
+| 请假业务(后端) | `LeaveService.java` / `LeaveServiceImpl.java` / `LeaveController.java` | 提交/审批通过/驳回/查询记录完整流程 |
+| 请假前端 | `LeaveManagement.vue` / `ApprovalPage.vue`(前端部分) | 申请表单+记录列表、审批详情展示 |
+| 表单状态+类型 | `useFormDesigner.ts` / `types/form.ts` / `api/form.ts` | 字段增删改查、Schema导出、表单专属API定义 |
 
-| 模块 | 文件 | 功能 |
-|------|------|------|
-| 流程设计器 | `FlowDesigner.vue` + `FlowCanvas.vue` + `FlowNodeCard.vue` | 节点库加载（后端 API）→ 垂直链式画布拖拽（vuedraggable）→ 箭头连接线 |
-| 节点库面板 | `NodeLibrary.vue` | 已使用节点置灰禁用、拖拽添加 |
-| 条件分支编辑器 | `ConditionEditor.vue` | field/operator/value/action 四元组配置弹窗 |
-| **责任链构建器** | `ChainBuilder.java` | 解析 flow_schema JSON → 条件评估 → 反射实例化 Handler Bean → 串联成链 → 生成快照 |
-| **条件评估器** | `ConditionEvaluator.java` | 6 种运算符、数字/字符串自动识别、首个命中生效 |
-| **审批 Handler 基类** | `ApproveHandler.java` | 抽象基类（next 链式结构 + doHandle 模板方法） |
-| 直属主管 Handler | `DirectLeaderHandler.java` | 查 `sys_user.dept_id` → `sys_department.leader_id` |
-| 部门经理 Handler | `DeptManagerHandler.java` | 向上级部门查找 leader_id |
-| 人事 Handler | `HrHandler.java` | ROLE_ADMIN 角色查询 → 人事部门回退 |
-| 总经理 Handler | `GmHandler.java` | 顶级部门（parent_id=0）leader_id |
-| 组织架构查询 | `SysUserMapper` + `SysDepartmentMapper` + `SysUserRoleMapper` | 复用现有系统表 |
-| 请假 Service | `LeaveService.java` + `LeaveServiceImpl.java` | 提交（6 步流程）→ 审批通过（快照流转）→ 审批驳回（终止）→ 查询记录 |
-| 请假 Controller | `LeaveController.java` | POST submit / PUT approve / PUT reject / GET my-records / GET detail |
-| 审批工作台 | `ApprovalPage.vue` | 左侧待审批/已处理 Tab 切换 + 右侧审批详情（表单数据+审批链+操作按钮） |
-| 审批 API | `ApprovalController.java` | pending / processed / records 三个端点 |
-| 请假管理页 | `LeaveManagement.vue` | 左侧申请表单 + 右侧记录列表（左右并排，提交后即时刷新） |
-| 类型+状态 | `types/flow.ts` + `composables/useFlowDesigner.ts` | FlowSchema / FlowCondition + 节点增删改查 |
+> [!WARNING]
+>
+> -   接手请假业务后需严格遵循 `snapshot_json` 不可变原则；
+> -   表单JSON格式必须与后端Entity字段严格对齐；
+> -   Element Plus校验规则命名需做转换（如 `minLength → min`）。
 
-**还需要关注**：每个 nodeCode 仅可使用一次；审批人通过 `sys_department.leader_id` 实时查询；`snapshot_json` 是流转依据，提交后不可变。
+#### 成员 B：流程引擎核心
 
----
+> **定位**：剥离业务CRUD，专注审批责任链引擎、条件解析等核心技术难点。
 
-### 成员 C：考勤引擎（前后端核心）
+| 模块 | 文件 | 功能说明 |
+| :--- | :--- | :--- |
+| 流程设计器(前端) | `FlowDesigner.vue` / `FlowCanvas.vue` / `FlowNodeCard.vue` / `NodeLibrary.vue` / `ConditionEditor.vue` | 垂直链式画布、节点拖拽、四元组条件配置 |
+| 责任链引擎 | `ChainBuilder.java` / `ApproveHandler.java` | JSON解析→反射实例化Handler→串联成链→生成快照 |
+| 条件评估器 | `ConditionEvaluator.java` | 6种运算符、数字/字符串自动识别、首个命中生效 |
+| 审批Handler族 | `DirectLeaderHandler` / `DeptManagerHandler` / `HrHandler` / `GmHandler` | 4级组织架构审批人实时查询 |
+| 流程后端 | `FlowSchemaController` / `FlowSchemaServiceImpl` | 流程CRUD、流程版本管理、节点库API |
+| 审批API(后端) | `ApprovalController.java` | pending / processed / records 三个端点（仅后端） |
+| 流程状态+类型 | `useFlowDesigner.ts` / `types/flow.ts` / `api/flow.ts` | 节点增删改查、流程专属API定义 |
 
-**负责范围**：考勤规则配置 + 考勤判定引擎 + 员工打卡页
+> [!WARNING]
+>
+> -   每个 `nodeCode` 全局唯一，不可重复使用；
+> -   审批人通过 `sys_department.leader_id` 实时查询，禁止缓存审批人信息；
+> -   不再负责请假Service和审批页面前端开发。
 
-| 模块 | 文件 | 功能 |
-|------|------|------|
-| 考勤规则配置 | `AttendanceConfig.vue` | 基础规则编辑 + 日历面板 + 节假日 API 同步 + 特殊日列表 + 版本管理 |
-| 日历面板 | `CalendarPanel.vue` | 月份视图、特殊日标注（节假日绿/调休蓝）、点击循环切换、只读模式、自由翻页 |
-| 规则编辑器 | `RuleEditor.vue` | 上班/下班时间、弹性分钟、迟到/早退阈值、弹性<阈值前端校验 |
-| **考勤判定引擎** | `AttendanceService.java` + `AttendanceServiceImpl.java` | 签到/签退弹性判定、月度完整日历生成（4 级优先级）、请假关联 |
-| 考勤 Controller | `AttendanceController.java` | POST sign-in / POST sign-out / GET today / GET monthly |
-| 考勤规则 Service | `AttendanceSchemaService.java` + `AttendanceSchemaServiceImpl.java` | 版本管理 + is_current 切换 + 缓存同步 |
-| 员工打卡页 | `AttendancePage.vue` | 实时时钟 + 打卡按钮 + 月度统计（6 项指标）+ 月度表格（完整日历）+ 月份导航限制 |
-| 类型+状态 | `types/attendance.ts` + `composables/useAttendanceDesigner.ts` | BaseRule / SpecialDay / SyncConfig + 节假日同步逻辑 |
+#### 成员 C：考勤引擎 + 审批工作台前端
 
-**还需要关注**：弹性分钟 < 阈值（前端校验 + 规则说明）；判定优先级：休息 → 请假 → 打卡 → 缺卡；月度视图截止到今天；月份导航受入职日期限制。
+> **定位**：考勤全栈负责人，同时承接审批工作台前端UI开发（对接成员B的后端API）。
 
----
+| 模块 | 文件 | 功能说明 |
+| :--- | :--- | :--- |
+| 考勤规则配置 | `AttendanceConfig.vue` / `CalendarPanel.vue` / `RuleEditor.vue` | 基础规则、日历面板、节假日同步、特殊日管理 |
+| 考勤判定引擎 | `AttendanceService.java` / `AttendanceServiceImpl.java` | 弹性签到签退、月度日历生成(4级优先级)、请假关联 |
+| 考勤后端 | `AttendanceController` / `AttendanceSchemaServiceImpl` | 打卡API、考勤版本管理(is_current模型)、缓存同步 |
+| 员工打卡页 | `AttendancePage.vue` | 实时时钟、打卡按钮、月度统计6指标、月份导航限制 |
+| 审批工作台(前端) | `ApprovalPage.vue`(完整前端) | 待审批/已处理Tab切换、审批详情、操作按钮 |
+| 考勤状态+类型 | `useAttendanceDesigner.ts` / `types/attendance.ts` / `api/attendance.ts` | 节假日同步逻辑、考勤专属API定义 |
 
-### 成员 D：系统整合 + 基础设施 — 
+> [!WARNING]
+>
+> -   审批工作台需先与成员B约定好API契约，可先Mock开发；
+> -   弹性分钟 < 阈值需前后端双重校验；
+> -   考勤判定优先级：休息 → 请假 → 打卡 → 缺卡。
 
-**负责范围**：项目搭建、数据库设计、缓存、版本管理、文档
+#### 成员 D：平台基础设施 + 数据层
 
-| 模块 | 文件 | 功能 |
-|------|------|------|
-| 后端项目搭建 | `pom.xml` + `OaLowcodeApplication.java` + `application.yml` | Spring Boot 3.2.5 + MyBatis-Plus 3.5.5 + Druid 连接池 + Caffeine 缓存 |
-| CORS 配置 | `WebConfig.java` | 允许前端跨域请求 |
-| 全局异常处理 | `GlobalExceptionHandler.java` | 统一错误响应格式 |
-| 分页插件 | `MyBatisPlusConfig.java` | PaginationInnerInterceptor |
-| 自动填充 | `MyMetaObjectHandler.java` | createTime / updateTime |
-| 数据库设计 | `init.sql` | 12 张表完整 DDL + 测试数据（5 员工、4 部门、3 角色、请假/审批/打卡记录） |
-| 数据初始化器 | `DataInitializer.java` | 启动时幂等插入演示数据（表单+流程+考勤规则） |
-| **缓存管理** | `CacheConfig.java` + `SchemaCacheManager.java` | 3 个 Caffeine 实例 + 启动预热 + 读写操作 + 失效策略 |
-| 版本管理 | `FormSchemaService` + `FlowSchemaService` + `AttendanceSchemaService` 的 saveWithVersion/getVersions/publish/disable | form/flow 用 code+version 模型，attendance 用 is_current 模型 |
+> **定位**：纯底座支撑，不介入任何业务Schema的版本逻辑，专注框架、缓存工具、数据库和文档。
+
+| 模块 | 文件 | 功能说明 |
+| :--- | :--- | :--- |
+| 后端框架搭建 | `pom.xml` / `OaLowcodeApplication.java` / `application.yml` | SpringBoot3.2.5 + MyBatisPlus + Druid + Caffeine |
+| 公共配置 | `WebConfig.java` / `GlobalExceptionHandler.java` / `MyBatisPlusConfig.java` / `MyMetaObjectHandler.java` | CORS、统一异常、分页插件、自动填充 |
+| 缓存工具(非业务) | `CacheConfig.java` / `SchemaCacheManager.java` | 提供3个Caffeine实例+预热+失效策略的通用工具类 |
 | 统一响应 | `Result.java` | 泛型封装 `{code, message, data}` |
-| 前端项目搭建 | `package.json` + `vite.config.ts` + `tsconfig.json` + `index.html` | Vite 5 + Element Plus + vuedraggable + Sass |
-| 应用导航 | `App.vue` | 深色顶栏 + 设计态/运行态 Tab 分组（6 个页面） |
-| 实体类 | 12 个 Entity | 含 MySQL JSON 列的 JacksonTypeHandler 配置 |
-| Mapper | 10 个 Mapper | MyBatis-Plus BaseMapper |
-| 项目文档 | `README.md` | 架构图、模块说明、API 对照、分工表 |
+| 数据库设计 | `init.sql` | 12张表DDL + 测试数据(5员工/4部门/3角色/业务记录) |
+| 数据初始化 | `DataInitializer.java` | 启动时幂等插入演示数据 |
+| 前端框架搭建 | `package.json` / `vite.config.ts` / `tsconfig.json` / `App.vue` | Vite5 + ElementPlus + vuedraggable + 应用导航 |
+| 数据层 | 12个Entity + 10个Mapper | JSON列JacksonTypeHandler、BaseMapper |
+| API基础封装 | `api/index.ts` | 仅fetch封装+拦截器，不含业务接口定义 |
+| 项目文档 | `README.md` | 架构图、模块说明、API对照、分工表 |
 
-**还需要关注**：Caffeine 缓存 Key 设计（form/flow 用 code，attendance 用 "current"）；Druid 只保留核心配置；`DataInitializer` 需幂等；JSON 列的 `autoResultMap = true` 不可遗漏。
+> [!WARNING]
+>
+> -   `SchemaCacheManager` 只提供 get/put/invalidate 方法，不调用任何业务Service；
+> -   `DataInitializer` 必须保证幂等性，重复启动不产生脏数据；
+> -   JSON列实体必须添加 `autoResultMap = true` 注解；
+> -   Druid连接池只保留核心配置，避免过度调优。
+
+## 3. 跨成员协作接口约定
+
+为避免联调阻塞，以下契约需在开发前锁定：
+
+| 协作方 | 约定内容 | 责任人 |
+| :--- | :--- | :--- |
+| A ↔ B | 请假Service调用ChainBuilder的入参/出参格式；`snapshot_json` 结构规范 | A、B共同确认 |
+| B ↔ C | `ApprovalController` 3个端点的 Request/Response DTO | B提供接口文档，C确认 |
+| A/C ↔ D | `SchemaCacheManager` 方法签名；`Result` 泛型使用规范 | D提供工具类文档 |
+| 全员 ↔ D | `init.sql` 表结构变更需通知D统一维护；Entity JSON列注解规范 | D统筹管理 |
