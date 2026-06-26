@@ -40,7 +40,7 @@ public class LeaveController {
     @PostMapping("/submit")
     public Result<Map<String, Object>> submit(@RequestBody Map<String, Object> body) {
         Long formSchemaId = toLong(body.get("formSchemaId"));
-        @SuppressWarnings("unchecked")
+
         Map<String, Object> formData = (Map<String, Object>) body.get("formData");
         Long applicantId = toLong(body.getOrDefault("applicantId", 1L));
         String applicantName = (String) body.getOrDefault("applicantName", "测试员工");
@@ -74,13 +74,17 @@ public class LeaveController {
         return Result.ok(leaveService.reject(recordId, approverId, approverName, comment));
     }
 
-    /** 查询某用户的所有请假记录（按时间倒序，含流程状态摘要） */
+    /**
+     * 查询某用户的所有请假记录（按时间倒序，含流程状态摘要）
+     */
     @GetMapping("/my-records")
     public Result<java.util.List<Map<String, Object>>> myRecords(@RequestParam(defaultValue = "1") Long userId) {
         return Result.ok(leaveService.getUserRecords(userId));
     }
 
-    /** 查询请假详情（含表单数据 + 流程状态 + 完整审批记录链） */
+    /**
+     * 查询请假详情（含表单数据 + 流程状态 + 完整审批记录链）
+     */
     @GetMapping("/{leaveId}")
     public Result<Map<String, Object>> detail(@PathVariable Long leaveId) {
         return Result.ok(leaveService.getDetail(leaveId));
@@ -89,7 +93,10 @@ public class LeaveController {
     private Long toLong(Object value) {
         if (value == null) return null;
         if (value instanceof Number n) return n.longValue();
-        try { return Long.parseLong(value.toString()); }
-        catch (NumberFormatException e) { return null; }
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

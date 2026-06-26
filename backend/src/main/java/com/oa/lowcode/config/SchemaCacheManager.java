@@ -52,16 +52,19 @@ public class SchemaCacheManager {
         log.info("开始预热 Schema 缓存...");
         int formCount = 0, flowCount = 0;
 
+        // --- 表单 Schema：查所有记录，每个 code 取 version 最大的 ---
         List<FormSchema> forms = formSchemaMapper.selectList(null);
         Map<String, FormSchema> latestForms = new LinkedHashMap<>();
         for (FormSchema f : forms) {
             FormSchema exist = latestForms.get(f.getCode());
+            // 同 code 取最大版本号
             if (exist == null || f.getVersion() > exist.getVersion()) latestForms.put(f.getCode(), f);
         }
         for (FormSchema f : latestForms.values()) {
             if (f.getSchemaJson() != null) { formSchemaCache.put(f.getCode(), f.getSchemaJson()); formCount++; }
         }
 
+        // --- 流程 Schema：同逻辑，每个 code 取最大版本 ---
         List<FlowSchema> flows = flowSchemaMapper.selectList(null);
         Map<String, FlowSchema> latestFlows = new LinkedHashMap<>();
         for (FlowSchema f : flows) {
@@ -72,6 +75,7 @@ public class SchemaCacheManager {
             if (f.getSchemaJson() != null) { flowSchemaCache.put(f.getCode(), f.getSchemaJson()); flowCount++; }
         }
 
+        // --- 考勤 Schema：只取 is_current=1 的那一条 ---
         AttendanceSchema cur = attendanceSchemaMapper.selectOne(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AttendanceSchema>()
                         .eq(AttendanceSchema::getIsCurrent, 1).orderByDesc(AttendanceSchema::getId).last("LIMIT 1"));

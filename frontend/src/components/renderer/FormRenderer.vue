@@ -46,7 +46,7 @@ function getDefaultValue(type: string): unknown {
   switch (type) {
     case 'switch':   return false
     case 'checkbox': return []
-    case 'number':   return undefined
+    case 'number':   return null
     default:         return ''
   }
 }
@@ -65,6 +65,10 @@ function convertRules(field: FormField): Record<string, unknown>[] {
 
     if (rule.required) {
       r.required = true
+    }
+    // 数字字段必须指定 type，否则 async-validator 把 min/max 当成字符串长度比较
+    if (field.type === 'number') {
+      r.type = 'number'
     }
     if (rule.min !== undefined) {
       r.min = rule.min
@@ -224,6 +228,30 @@ function getPlaceholder(field: FormField): string {
   }
   return map[field.type] ?? ''
 }
+
+/** 从字段校验规则中取最小值，未配置时返回不限制 */
+function getNumberMin(field: FormField): number | undefined {
+  for (const r of field.rules) {
+    if (r.min !== undefined) return r.min
+  }
+  return undefined
+}
+
+/** 从字段校验规则中取步长(multipleOf)，未配置时默认 1 */
+function getNumberStep(field: FormField): number {
+  for (const r of field.rules) {
+    if (r.multipleOf && r.multipleOf > 0) return r.multipleOf
+  }
+  return 1
+}
+
+/** 从字段校验规则中取小数位数(decimalPlaces)，未配置时不限制 */
+function getNumberPrecision(field: FormField): number | undefined {
+  for (const r of field.rules) {
+    if (r.decimalPlaces !== undefined && r.decimalPlaces >= 0) return r.decimalPlaces
+  }
+  return undefined
+}
 </script>
 
 <template>
@@ -275,8 +303,9 @@ function getPlaceholder(field: FormField): string {
             v-model="formModel[field.key]"
             :placeholder="getPlaceholder(field)"
             :disabled="field.disabled"
-            :min="0"
-            :precision="0.5"
+            :min="getNumberMin(field)"
+            :step="getNumberStep(field)"
+            :precision="getNumberPrecision(field)"
             controls-position="right"
             style="width: 200px"
           />

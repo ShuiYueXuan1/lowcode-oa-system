@@ -39,21 +39,25 @@ public class DeptManagerHandler extends ApproveHandler {
         LeaveInstance leave = context.getLeaveInstance();
         Long applicantId = leave.getApplicantId();
 
+        // 第1步: 查申请人所在部门
         SysUser applicant = sysUserMapper.selectById(applicantId);
         if (applicant == null || applicant.getDeptId() == null) {
-            lastApproverId = 1002L; lastApproverName = "部门经理"; return 1002L;
+            lastApproverId = 3L; lastApproverName = "部门经理"; return 3L;
         }
 
         SysDepartment dept = sysDepartmentMapper.selectById(applicant.getDeptId());
-        if (dept == null) { lastApproverId = 1002L; lastApproverName = "部门经理"; return 1002L; }
+        if (dept == null) { lastApproverId = 3L; lastApproverName = "部门经理"; return 3L; }
 
+        // 第2步: 查上级部门（通过 parent_id 向上追溯）
+        // 如果存在上级部门 → 取上级部门的 leader 作为部门经理
+        // 如果无上级部门（顶级部门员工）→ 取本部门的 leader
         SysDepartment parentDept = null;
         if (dept.getParentId() != null && dept.getParentId() > 0)
             parentDept = sysDepartmentMapper.selectById(dept.getParentId());
 
         SysDepartment target = (parentDept != null && parentDept.getLeaderId() != null) ? parentDept : dept;
         SysUser leader = sysUserMapper.selectById(target.getLeaderId());
-        lastApproverId = target.getLeaderId() != null ? target.getLeaderId() : 1002L;
+        lastApproverId = target.getLeaderId() != null ? target.getLeaderId() : 3L;
         lastApproverName = (leader != null ? leader.getRealName() : "经理") + "（部门经理）";
 
         log.info("[部门经理] 申请人={}, 部门={} → 上级={}, 经理={}",
@@ -63,5 +67,5 @@ public class DeptManagerHandler extends ApproveHandler {
     }
 
     @Override public String getApproverName() { return lastApproverName != null ? lastApproverName : "部门经理"; }
-    @Override public Long getApproverId() { return lastApproverId != null ? lastApproverId : 1002L; }
+    @Override public Long getApproverId() { return lastApproverId != null ? lastApproverId : 3L; }
 }

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 表单 Schema 控制器
@@ -67,7 +68,11 @@ public class FormSchemaController {
      * 保存后自动更新缓存。</p>
      */
     @PostMapping
-    public Result<FormSchema> save(@RequestBody FormSchema formSchema) {
+    public Result<FormSchema> save(@RequestBody Map<String, Object> body) {
+        FormSchema formSchema = new FormSchema();
+        formSchema.setName((String) body.get("name"));
+        formSchema.setCode((String) body.get("code"));
+        formSchema.setSchemaJson(body);  // 将前端发来的整个 JSON 作为 schemaJson 存储
         return Result.ok(formSchemaService.saveWithVersion(formSchema));
     }
 

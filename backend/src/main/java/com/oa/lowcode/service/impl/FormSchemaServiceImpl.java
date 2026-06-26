@@ -55,25 +55,30 @@ public class FormSchemaServiceImpl
      */
     @Override
     public FormSchema saveWithVersion(FormSchema formSchema) {
+        // 校验：code 必须非空，schemaJson 必须包含 fields 数组
         if (formSchema.getCode() == null || formSchema.getCode().isBlank())
             throw new IllegalArgumentException("表单编码不能为空");
         validateSchemaJson(formSchema.getSchemaJson());
 
+        // 查当前 code 的最大版本号（同 code 可能有多条历史记录）
         LambdaQueryWrapper<FormSchema> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(FormSchema::getCode, formSchema.getCode()).orderByDesc(FormSchema::getVersion).last("LIMIT 1");
         FormSchema latest = baseMapper.selectOne(wrapper);
 
+        // 版本号处理：首次保存 version=1，后续版本 = maxVersion + 1
         int newVersion = 1;
         if (latest != null) {
             if (formSchema.getVersion() != null && formSchema.getVersion() > latest.getVersion())
                 newVersion = formSchema.getVersion();
             else newVersion = latest.getVersion() + 1;
         }
+        // 清空 ID 强制 INSERT（而非 UPDATE），version 自动递增
         formSchema.setId(null);
         formSchema.setVersion(newVersion);
-        formSchema.setStatus(formSchema.getStatus() != null ? formSchema.getStatus() : 1);
+        formSchema.setStatus(formSchema.getStatus() != null ? formSchema.getStatus() : 1);  // 默认草稿
         baseMapper.insert(formSchema);
 
+        // 保存后立即更新缓存，运行态下次加载时直接用缓存
         if (formSchema.getSchemaJson() != null)
             cacheManager.putFormSchema(formSchema.getCode(), formSchema.getSchemaJson());
         return formSchema;
@@ -89,12 +94,15 @@ public class FormSchemaServiceImpl
      */
     @Override
     public FormSchema getByCode(String code) {
+        // 第1优先：Caffeine 本地缓存（纳秒级，零网络开销）
         Map<String, Object> cached = cacheManager.getFormSchema(code);
         if (cached != null) {
             FormSchema s = new FormSchema(); s.setCode(code); s.setSchemaJson(cached); return s;
         }
+        // 第2优先：缓存未命中 → 查 DB 最新版本（version DESC LIMIT 1）
         FormSchema result = baseMapper.selectOne(new LambdaQueryWrapper<FormSchema>()
                 .eq(FormSchema::getCode, code).orderByDesc(FormSchema::getVersion).last("LIMIT 1"));
+        // 查 DB 后回写缓存，下次直接命中
         if (result != null && result.getSchemaJson() != null)
             cacheManager.putFormSchema(code, result.getSchemaJson());
         return result;
@@ -116,11 +124,14 @@ public class FormSchemaServiceImpl
     public void publish(Long id) {
         FormSchema schema = baseMapper.selectById(id);
         if (schema == null) throw new IllegalArgumentException("表单不存在");
+        // 同 code 的所有其他版本全部停用（status=3），保证同时只有一个生效版本
         List<FormSchema> all = baseMapper.selectList(
                 new LambdaQueryWrapper<FormSchema>().eq(FormSchema::getCode, schema.getCode()));
         for (FormSchema s : all) { s.setStatus(3); baseMapper.updateById(s); }
+        // 目标版本设为已发布（status=2）
         schema.setStatus(2);
         baseMapper.updateById(schema);
+        // 更新缓存，运行态下次 GET 时直接命中
         if (schema.getSchemaJson() != null) cacheManager.putFormSchema(schema.getCode(), schema.getSchemaJson());
     }
 

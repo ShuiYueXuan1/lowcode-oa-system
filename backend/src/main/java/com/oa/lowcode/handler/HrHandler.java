@@ -34,12 +34,14 @@ public class HrHandler extends ApproveHandler {
 
     @Override
     public Long doHandle(ApproveContext context) {
+        // 第1级查找: 通过角色关联查询（sys_user_role JOIN sys_role WHERE role_code='ROLE_ADMIN'）
         List<Long> adminIds = sysUserRoleMapper.findUserIdsByRoleCode("ROLE_ADMIN");
         if (!adminIds.isEmpty()) {
             log.info("[人事] 通过 ROLE_ADMIN 角色找到 HR: userId={}", adminIds.get(0));
             return adminIds.get(0);
         }
 
+        // 第2级查找: 角色查不到 → 模糊匹配部门名含"人事"的记录，取其 leader
         List<SysDepartment> hrDepts = sysDepartmentMapper.selectList(
                 new LambdaQueryWrapper<SysDepartment>().like(SysDepartment::getDeptName, "人事"));
         if (!hrDepts.isEmpty() && hrDepts.get(0).getLeaderId() != null) {
@@ -48,8 +50,9 @@ public class HrHandler extends ApproveHandler {
             return hrDepts.get(0).getLeaderId();
         }
 
+        // 两级都找不到 → 回退默认 ID
         log.warn("[人事] 未找到 HR，回退默认");
-        return 1003L;
+        return 5L;
     }
 
     @Override
@@ -65,6 +68,6 @@ public class HrHandler extends ApproveHandler {
     @Override
     public Long getApproverId() {
         List<Long> ids = sysUserRoleMapper.findUserIdsByRoleCode("ROLE_ADMIN");
-        return ids.isEmpty() ? 1003L : ids.get(0);
+        return ids.isEmpty() ? 5L : ids.get(0);
     }
 }

@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 考勤规则 Schema 控制器
@@ -39,7 +40,11 @@ public class AttendanceSchemaController {
 
     /** 保存新版本（is_current=0，不立即生效） */
     @PostMapping
-    public Result<AttendanceSchema> save(@RequestBody AttendanceSchema schema) {
+    public Result<AttendanceSchema> save(@RequestBody Map<String, Object> body) {
+        AttendanceSchema schema = new AttendanceSchema();
+        String name = (String) body.get("name");
+        schema.setName(name != null && !name.isBlank() ? name : "考勤规则");
+        schema.setSchemaJson(body);  // 将前端发来的整个 JSON 作为 schemaJson 存储
         return Result.ok(attendanceSchemaService.saveWithVersion(schema));
     }
 

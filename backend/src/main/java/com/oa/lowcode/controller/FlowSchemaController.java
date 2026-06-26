@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 流程 Schema 控制器
@@ -39,7 +40,11 @@ public class FlowSchemaController {
      * <p>code 不存在 → version=1；code 已存在 → version=maxVersion+1</p>
      */
     @PostMapping
-    public Result<FlowSchema> save(@RequestBody FlowSchema schema) {
+    public Result<FlowSchema> save(@RequestBody Map<String, Object> body) {
+        FlowSchema schema = new FlowSchema();
+        schema.setName((String) body.get("name"));
+        schema.setCode((String) body.get("code"));
+        schema.setSchemaJson(body);  // 将前端发来的整个 JSON 作为 schemaJson 存储
         return Result.ok(flowSchemaService.saveWithVersion(schema));
     }
 

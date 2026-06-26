@@ -39,18 +39,21 @@ public class DirectLeaderHandler extends ApproveHandler {
         LeaveInstance leave = context.getLeaveInstance();
         Long applicantId = leave.getApplicantId();
 
+        // 第1步: 查申请人信息（获取部门 ID）
         SysUser applicant = sysUserMapper.selectById(applicantId);
         if (applicant == null || applicant.getDeptId() == null) {
             log.warn("[直属主管] 申请人不存在或无部门: userId={}", applicantId);
-            lastApproverId = 1001L; lastApproverName = "直属主管"; return 1001L;
+            lastApproverId = 2L; lastApproverName = "直属主管"; return 2L;
         }
 
+        // 第2步: 查部门信息（获取 leader_id）
         SysDepartment dept = sysDepartmentMapper.selectById(applicant.getDeptId());
         if (dept == null || dept.getLeaderId() == null) {
             log.warn("[直属主管] 部门无负责人: deptId={}", applicant.getDeptId());
-            lastApproverId = 1001L; lastApproverName = "直属主管"; return 1001L;
+            lastApproverId = 2L; lastApproverName = "直属主管"; return 2L;
         }
 
+        // 第3步: 查 leader 的用户信息（获取姓名用于显示）
         SysUser leader = sysUserMapper.selectById(dept.getLeaderId());
         lastApproverId = dept.getLeaderId();
         lastApproverName = (leader != null ? leader.getRealName() : "主管") + "（直属主管）";
@@ -60,5 +63,5 @@ public class DirectLeaderHandler extends ApproveHandler {
     }
 
     @Override public String getApproverName() { return lastApproverName != null ? lastApproverName : "直属主管"; }
-    @Override public Long getApproverId() { return lastApproverId != null ? lastApproverId : 1001L; }
+    @Override public Long getApproverId() { return lastApproverId != null ? lastApproverId : 2L; }
 }

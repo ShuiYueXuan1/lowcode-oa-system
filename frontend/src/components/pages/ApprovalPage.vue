@@ -19,12 +19,13 @@ interface ProcessRecord {
   action: string; comment: string; handleTime: string; createTime: string
 }
 
-const approverId = ref(1001)
+// 审批人选项对应数据库 sys_user 表中的真实用户 ID
+// 组织架构: 王五(ID=2)=研发部leader/产品部leader, 赵六(ID=3)=总公司leader/ROLE_ADMIN, 许人事(ID=5)=ROLE_ADMIN
+const approverId = ref(2)
 const approverOptions = [
-  { id: 1001, name: '张主管（直属主管）' },
-  { id: 1002, name: '李经理（部门经理）' },
-  { id: 1003, name: '王HR（人事）' },
-  { id: 1004, name: '赵总（总经理）' },
+  { id: 2, name: '王五（研发部/产品部 leader，直属主管/部门经理）' },
+  { id: 3, name: '赵六（总公司 leader，部门经理/总经理/人事）' },
+  { id: 5, name: '许人事（行政人事部，人事）' },
 ]
 
 const listTab = ref<'pending' | 'processed'>('pending')

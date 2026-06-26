@@ -37,9 +37,12 @@ public class AttendanceSchemaServiceImpl
      */
     @Override
     public AttendanceSchema saveWithVersion(AttendanceSchema schema) {
+        // 校验：名称非空，schemaJson 必须包含 baseRule
         if (schema.getName() == null || schema.getName().isBlank())
             throw new IllegalArgumentException("规则名称不能为空");
         validateSchemaJson(schema.getSchemaJson());
+        // 关键：新增行 is_current=0（不生效），需手动 setCurrent 才会激活
+        // 这是故意的——考勤规则影响全员，必须人工确认后才能切换
         schema.setId(null); schema.setIsCurrent(0);
         baseMapper.insert(schema);
         return schema;
@@ -48,10 +51,12 @@ public class AttendanceSchemaServiceImpl
     /** 获取当前生效的考勤规则（优先 Caffeine 缓存） */
     @Override
     public AttendanceSchema getCurrent() {
+        // 缓存 key 固定为 "current"，因为同时只有一条规则生效
         Map<String, Object> cached = cacheManager.getAttendanceSchema();
         if (cached != null) {
             AttendanceSchema s = new AttendanceSchema(); s.setSchemaJson(cached); return s;
         }
+        // 缓存未命中 → 查 DB 中 is_current=1 的记录
         AttendanceSchema result = baseMapper.selectOne(new LambdaQueryWrapper<AttendanceSchema>()
                 .eq(AttendanceSchema::getIsCurrent, 1).orderByDesc(AttendanceSchema::getId).last("LIMIT 1"));
         if (result != null && result.getSchemaJson() != null)
@@ -72,11 +77,14 @@ public class AttendanceSchemaServiceImpl
      */
     @Override
     public void setCurrent(Long id) {
+        // 先将所有版本的 is_current 置 0（保证同时只有一条生效）
         List<AttendanceSchema> all = baseMapper.selectList(null);
         for (AttendanceSchema s : all) { s.setIsCurrent(0); baseMapper.updateById(s); }
+        // 目标版本 is_current 置 1，同时更新缓存
         AttendanceSchema target = baseMapper.selectById(id);
         if (target != null) {
             target.setIsCurrent(1); baseMapper.updateById(target);
+            // 缓存更新后，AttendanceServiceImpl 下次打卡判定立即使用新规则
             if (target.getSchemaJson() != null) cacheManager.putAttendanceSchema(target.getSchemaJson());
         }
     }

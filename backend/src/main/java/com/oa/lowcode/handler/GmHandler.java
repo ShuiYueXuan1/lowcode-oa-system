@@ -31,6 +31,7 @@ public class GmHandler extends ApproveHandler {
 
     @Override
     public Long doHandle(ApproveContext context) {
+        // 查 sys_department 中 parent_id=0 的顶级部门（总公司），取其 leader 作为总经理
         SysDepartment topDept = sysDepartmentMapper.selectOne(
                 new LambdaQueryWrapper<SysDepartment>().eq(SysDepartment::getParentId, 0L).last("LIMIT 1"));
         if (topDept != null && topDept.getLeaderId() != null) {
@@ -39,8 +40,9 @@ public class GmHandler extends ApproveHandler {
                     topDept.getDeptName(), leader != null ? leader.getRealName() : topDept.getLeaderId());
             return topDept.getLeaderId();
         }
+        // 找不到顶级部门或部门无负责人 → 回退默认 ID
         log.warn("[总经理] 未找到顶级部门负责人，回退默认");
-        return 1004L;
+        return 3L;
     }
 
     @Override
@@ -58,6 +60,6 @@ public class GmHandler extends ApproveHandler {
     public Long getApproverId() {
         SysDepartment topDept = sysDepartmentMapper.selectOne(
                 new LambdaQueryWrapper<SysDepartment>().eq(SysDepartment::getParentId, 0L).last("LIMIT 1"));
-        return (topDept != null && topDept.getLeaderId() != null) ? topDept.getLeaderId() : 1004L;
+        return (topDept != null && topDept.getLeaderId() != null) ? topDept.getLeaderId() : 3L;
     }
 }

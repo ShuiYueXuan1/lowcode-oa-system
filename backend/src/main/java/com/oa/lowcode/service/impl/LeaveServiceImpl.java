@@ -74,10 +74,13 @@ public class LeaveServiceImpl implements LeaveService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> submitLeave(Long formSchemaId, Map<String, Object> formData,
                                             Long applicantId, String applicantName) {
+        // ===== 第1步：校验表单 Schema =====
         FormSchema formSchema = formSchemaMapper.selectById(formSchemaId);
         if (formSchema == null || formSchema.getStatus() != 2)
             throw new IllegalArgumentException("表单 Schema 不存在或未发布");
 
+        // ===== 第2步：创建请假业务记录 =====
+        // form_data 是 MySQL JSON 列，直接存用户提交的整个表单数据
         LeaveInstance leave = new LeaveInstance();
         leave.setFormSchemaId(formSchemaId);
         leave.setApplicantId(applicantId);
@@ -86,15 +89,18 @@ public class LeaveServiceImpl implements LeaveService {
         leave.setStatus("PENDING");
         leaveInstanceMapper.insert(leave);
 
+        // ===== 第3步：加载流程配置 （缓存优先，未命中查 DB） =====
         Long flowSchemaId = null;
         Map<String, Object> flowConfig = cacheManager.getFlowSchema(formSchema.getCode());
         if (flowConfig == null) {
+            // 缓存未命中 → 查 flow_schema 表最新已发布版本
             FlowSchema flowSchema = flowSchemaMapper.selectOne(
                     new LambdaQueryWrapper<FlowSchema>()
                             .eq(FlowSchema::getCode, formSchema.getCode())
                             .eq(FlowSchema::getStatus, 2)
                             .orderByDesc(FlowSchema::getVersion).last("LIMIT 1"));
             if (flowSchema == null || flowSchema.getSchemaJson() == null) {
+                // 没有配置审批流程 → 直接自动批准
                 leave.setStatus("APPROVED");
                 leaveInstanceMapper.updateById(leave);
                 log.info("无流程配置，请假直接通过: leaveId={}", leave.getId());
@@ -105,6 +111,7 @@ public class LeaveServiceImpl implements LeaveService {
             cacheManager.putFlowSchema(formSchema.getCode(), flowConfig);
         }
 
+        // ===== 第4步：提取 nodes 数组，空则自动批准 =====
         List<Map<String, Object>> nodesConfig = (List<Map<String, Object>>) flowConfig.get("nodes");
         if (nodesConfig == null || nodesConfig.isEmpty()) {
             leave.setStatus("APPROVED");
@@ -112,8 +119,13 @@ public class LeaveServiceImpl implements LeaveService {
             return Map.of("leaveInstance", leave, "message", "流程无审批节点，已自动通过");
         }
 
+        // ===== 第5步：ChainBuilder 构建责任链 + 生成快照 =====
+        // 核心：遍历 nodes → 评估条件跳过/保留 → 反射获取 Handler Bean → setNext 串链
+        // 返回 chainHead（链头节点）和 snapshot（解析快照，记录每个节点 required/skipped）
         ChainBuilder.BuildResult buildResult = chainBuilder.build(nodesConfig, formData);
 
+        // ===== 第6步：创建流程实例，存入 snapshot 快照 =====
+        // snapshot_json 是流程的"冻结副本"，后续审批流转全部基于此快照，不重新读 flow_schema
         ProcessInstance process = new ProcessInstance();
         process.setFlowSchemaId(flowSchemaId != null ? flowSchemaId : 1L);
         process.setBusinessId(leave.getId());
@@ -122,14 +134,18 @@ public class LeaveServiceImpl implements LeaveService {
         process.setSnapshotJson(buildResult.snapshot());
         processInstanceMapper.insert(process);
 
+        // ===== 第7步：创建第一条待审批记录 =====
         ApproveHandler chainHead = buildResult.chainHead();
         if (chainHead != null) {
+            // 有需要审批的节点 → 设置当前节点，创建 PENDING 记录
             process.setCurrentNodeId(chainHead.getNodeCode());
             processInstanceMapper.updateById(process);
             ApproveContext ctx = ApproveContext.builder()
                     .leaveInstance(leave).processInstance(process).formData(formData).build();
+            // doHandle() 实时查询组织架构表，获取首节点审批人 ID
             createPendingRecord(process.getId(), chainHead, ctx);
         } else {
+            // chainHead 为 null → 所有节点被条件跳过 → 自动批准
             leave.setStatus("APPROVED");
             leaveInstanceMapper.updateById(leave);
             process.setStatus("APPROVED");
@@ -161,10 +177,12 @@ public class LeaveServiceImpl implements LeaveService {
     @Transactional
     @SuppressWarnings("unchecked")
     public Map<String, Object> approve(Long recordId, Long approverId, String approverName, String comment) {
+        // ===== 第1步：校验当前审批记录 =====
         ApprovalRecord record = approvalRecordMapper.selectById(recordId);
         if (record == null || !"PENDING".equals(record.getAction()))
             throw new IllegalArgumentException("审批记录不存在或已处理");
 
+        // ===== 第2步：更新当前记录为"已批准" =====
         record.setAction("APPROVE");
         record.setApproverId(approverId);
         record.setApproverName(approverName);
@@ -172,6 +190,9 @@ public class LeaveServiceImpl implements LeaveService {
         record.setHandleTime(LocalDateTime.now());
         approvalRecordMapper.updateById(record);
 
+        // ===== 第3步：从 snapshot 快照中查找下一个需要审批的节点 =====
+        // 关键：读的是 process_instance.snapshot_json，不是重新读 flow_schema
+        // 这保证了在途流程不受管理员后续修改流程配置的影响
         ProcessInstance process = processInstanceMapper.selectById(record.getProcessId());
         if (process == null) throw new IllegalArgumentException("流程实例不存在");
 
@@ -182,6 +203,7 @@ public class LeaveServiceImpl implements LeaveService {
                 findNextRequiredNode(resolvedNodes, process.getCurrentNodeId());
 
         if (nextRequiredNode == null) {
+            // ===== 第4a步：没有下一个 required 节点 → 流程结束，全部批准 =====
             process.setStatus("APPROVED");
             process.setFinishTime(LocalDateTime.now());
             process.setCurrentNodeId(null);
@@ -192,17 +214,20 @@ public class LeaveServiceImpl implements LeaveService {
             return Map.of("processInstance", process, "message", "审批流程已全部通过");
         }
 
+        // ===== 第4b步：有下一个节点 → 流转 =====
         String nextNodeCode = (String) nextRequiredNode.get("nodeCode");
         String nextNodeName = (String) nextRequiredNode.get("nodeName");
         process.setCurrentNodeId(nextNodeCode);
         processInstanceMapper.updateById(process);
 
+        // 创建下一节点的待审批记录
         ApprovalRecord nextRecord = new ApprovalRecord();
         nextRecord.setProcessId(process.getId());
         nextRecord.setNodeId((String) nextRequiredNode.get("nodeId"));
         nextRecord.setNodeName(nextNodeName);
         nextRecord.setAction("PENDING");
 
+        // 通过反射获取 Handler，doHandle() 实时查组织架构确定审批人
         LeaveInstance leave = leaveInstanceMapper.selectById(process.getBusinessId());
         ApproveHandler handler = findHandlerForNode(nextNodeCode);
         if (handler != null && leave != null) {
